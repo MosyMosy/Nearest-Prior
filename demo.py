@@ -248,7 +248,7 @@ def train(*, degree, reg_weight: float = 0.0, save_dir: str, args):
                 features_ = feature_extractor.feature()
                 source_features_, target_features_ = torch.split(features_, [X_source_.size()[0], X_target_.size()[0]],
                                                                  dim=0)
-                regularization_loss = regularization(source_features_, target_features_)
+                regularization_loss = regularization(source_features_, target_features_, sigma=args.sigma)
                 optimizer.zero_grad()
                 (loss + reg_weight * regularization_loss).backward()
                 optimizer.step()

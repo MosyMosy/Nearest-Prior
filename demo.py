@@ -1,5 +1,6 @@
 import math
 import os
+import typing as t
 from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
@@ -196,27 +197,44 @@ def accuracy(model, X, y):
     return (y_pred == y).float().mean()
 
 
-def regularization(source_feature: Tensor, target_feature: Tensor, sigma: float = 0.8) -> Tensor:
+def regularization(source_feature: Tensor, target_feature: Tensor, sigma: float = 0.8) -> t.Tuple[Tensor, t.Dict]:
     def _regularize(source_feature, target_feature):
         source_size = source_feature.size()[0]
         target_size = target_feature.size()[0]
         all_features = torch.cat([source_feature, target_feature], dim=0)
-        distance_map = torch.exp(-torch.cdist(all_features, all_features, p=2) / (2 * sigma ** 2))
+        squared_features = torch.cdist(all_features, all_features, p=2) + (
+                torch.eye(all_features.size()[0]).to(device) * 1e5)
+        distance_map = torch.exp(-squared_features / (2 * sigma ** 2))
         distance_map = distance_map * (1 - torch.eye(all_features.size()[0]))
         intra_domain_distance_map = distance_map[:source_size, :source_size]
         intra_nominator = torch.max(intra_domain_distance_map, dim=1)[0]
         # intra_denominator = torch.sum(intra_domain_distance_map, dim=1)
         # intra_domain_distance_map = intra_nominator / intra_denominator
+        source_source_nearest_neighbor_distance_map = squared_features[:source_size, :source_size]
+        source_source_nearest_neighbor_distances = source_source_nearest_neighbor_distance_map.min(dim=1)[0]
 
         inter_domain_distance_map = distance_map[:source_size, source_size:]
         inter_nominator = torch.max(inter_domain_distance_map, dim=1)[0]
         # inter_denominator = torch.sum(inter_domain_distance_map, dim=1)
         # inter_domain_distance_map = inter_nominator / inter_denominator
-        return torch.stack([intra_nominator, inter_nominator], dim=1).softmax(1)
+        source_target_nearest_neighbor_distance_map = squared_features[:source_size, source_size:]
+        source_target_nearest_neighbor_distances = source_target_nearest_neighbor_distance_map.min(dim=1)[0]
 
-    p1 = _regularize(source_feature, target_feature)
-    p2 = _regularize(target_feature, source_feature)
-    return -entropy(p1) - entropy(p2)
+        meta_info = {
+            "minimum_intra_nearest_distance": source_source_nearest_neighbor_distances.mean().item(),
+            "minimum_inter_nearest_distance": source_target_nearest_neighbor_distances.mean().item()
+        }
+
+        return torch.stack([intra_nominator, inter_nominator], dim=1).softmax(1), meta_info
+
+    p1, meta1 = _regularize(source_feature, target_feature)
+    p2, meta2 = _regularize(target_feature, source_feature)
+
+    meta = {}
+    for key in meta1.keys():
+        meta[key] = (meta1[key] + meta2[key]) / 2
+
+    return -entropy(p1) - entropy(p2), meta
 
 
 def train(*, degree, reg_weight: float = 0.0, save_dir: str, args):
@@ -234,6 +252,12 @@ def train(*, degree, reg_weight: float = 0.0, save_dir: str, args):
     y_test = torch.from_numpy(y_test).long().to(device)
 
     X_target_iter = random_iterator(X_target, torch.ones_like(X_target), batch_size=batch_size, infinite=True)
+    intra_distances_per_epoch = []
+    inter_distances_per_epoch = []
+
+    train_accuracy_per_epoch = []
+    test_accuracy_per_epoch = []
+
     with feature_extractor, feature_extractor.enable_register(True):
         for epoch in range(n_epochs):
             for source_data in random_iterator(X_source, y_source, batch_size, infinite=False):
@@ -245,28 +269,63 @@ def train(*, degree, reg_weight: float = 0.0, save_dir: str, args):
                                                          [X_source_.size()[0], X_target_.size()[0]], dim=0)
 
                 loss = criterion(source_logit, y_source_)
+                train_acc = torch.eq(source_logit.argmax(1), y_source_).float().mean().item()
+
                 features_ = feature_extractor.feature()
-                source_features_, target_features_ = torch.split(features_, [X_source_.size()[0], X_target_.size()[0]],
-                                                                 dim=0)
-                regularization_loss = regularization(source_features_, target_features_, sigma=args.sigma)
+                source_features_, target_features_ = torch.split(
+                    features_, [X_source_.size()[0], X_target_.size()[0]],
+                    dim=0
+                )
+                regularization_loss, meta = regularization(source_features_, target_features_, sigma=args.sigma)
                 optimizer.zero_grad()
                 (loss + reg_weight * regularization_loss).backward()
                 optimizer.step()
 
+                train_accuracy_per_epoch.append({epoch: train_acc})
+
+            intra_distances_per_epoch.append(meta["minimum_intra_nearest_distance"])
+            inter_distances_per_epoch.append(meta["minimum_inter_nearest_distance"])
+
             if epoch % 100 == 0:
                 test_accuray = accuracy(model, X_test, y_test)
+                test_accuracy_per_epoch.append({epoch: test_accuray})
                 print(
                     'Epoch: {}/{}, Loss: {:.3f}, Reg: {:.3f}, Accuracy: {:.3f}'
                         .format(epoch, n_epochs, loss.item(), regularization_loss.item(), test_accuray)
                 )
             if epoch % 100 == 0:
                 plt.figure(figsize=(5, 5), num=0)
-                figure = plot_decision_boundary(model, X_source, y_source, target_X=X_target)
+                plot_decision_boundary(model, X_source, y_source, target_X=X_target)
                 plt.text(1.5, 1.5, f'degree: {degree} \ntest_acc: {test_accuray * 100:.2f}', fontsize=10,
                          bbox=dict(facecolor='red', alpha=0.5))
                 save_name = os.path.join(save_dir,
                                          f'degree_{degree:03d}/reg_weight_{reg_weight}/sigma_{args.sigma:.3f}/epoch_{epoch:05d}.png')
                 Path(save_name).parent.mkdir(parents=True, exist_ok=True)
+                plt.savefig(save_name, dpi=75)
+                plt.close()
+
+                plt.figure(figsize=(5, 3), num=0)
+                plt.plot(intra_distances_per_epoch, label="intra")
+                plt.plot(inter_distances_per_epoch, label="inter")
+                save_name = os.path.join(save_dir,
+                                         f'degree_{degree:03d}/reg_weight_{reg_weight}/sigma_{args.sigma:.3f}/distances.jpg')
+                Path(save_name).parent.mkdir(parents=True, exist_ok=True)
+                plt.legend()
+                plt.grid()
+                plt.savefig(save_name, dpi=75)
+                plt.close()
+
+                plt.figure(figsize=(5, 3), num=0)
+                plt.plot([next(iter(x.keys())) for x in train_accuracy_per_epoch],
+                         [next(iter(x.values())) for x in train_accuracy_per_epoch], label="train_acc")
+                plt.plot([next(iter(x.keys())) for x in test_accuracy_per_epoch],
+                         [next(iter(x.values())) for x in test_accuracy_per_epoch], label="test_acc")
+                save_name = os.path.join(save_dir,
+                                         f'degree_{degree:03d}/reg_weight_{reg_weight}/sigma_{args.sigma:.3f}/acc.jpg')
+                Path(save_name).parent.mkdir(parents=True, exist_ok=True)
+                plt.legend()
+                plt.grid()
+                plt.ylim([0.2, 1.05])
                 plt.savefig(save_name, dpi=75)
 
     return os.path.join(save_dir, f'degree_{degree:03d}/reg_weight_{reg_weight}/sigma_{args.sigma:.3f}')
@@ -282,7 +341,7 @@ if __name__ == '__main__':
 
     import torch
 
-    plt.switch_backend("agg")
+    # plt.switch_backend("agg")
     device = "cpu"
 
     torch.manual_seed(0)

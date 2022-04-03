@@ -5,9 +5,11 @@ run_by_reg_weight_given_degree() {
   python demo.py --degree ${1} --reg-weight 10
   python demo.py --degree ${1} --reg-weight 100
   python demo.py --degree ${1} --reg-weight 1000
+  python demo.py --degree ${1} --reg-weight 10000
 }
 
 run_by_sigma_given_degree_and_reg_weight() {
+  python demo.py --degree ${1} --reg-weight ${2} --sigma 0.01
   python demo.py --degree ${1} --reg-weight ${2} --sigma 0.1
   python demo.py --degree ${1} --reg-weight ${2} --sigma 0.5
   python demo.py --degree ${1} --reg-weight ${2} --sigma 0.8
@@ -15,10 +17,19 @@ run_by_sigma_given_degree_and_reg_weight() {
   python demo.py --degree ${1} --reg-weight ${2} --sigma 2
   python demo.py --degree ${1} --reg-weight ${2} --sigma 5
   python demo.py --degree ${1} --reg-weight ${2} --sigma 10
+  python demo.py --degree ${1} --reg-weight ${2} --sigma 100
 }
 
 run_by_reg_weight_given_degree 0
 run_by_reg_weight_given_degree 20
 run_by_reg_weight_given_degree 40
+run_by_reg_weight_given_degree 45
 run_by_reg_weight_given_degree 60
 run_by_reg_weight_given_degree 80
+
+run_by_sigma_given_degree_and_reg_weight 45 0.1
+run_by_sigma_given_degree_and_reg_weight 45 1
+run_by_sigma_given_degree_and_reg_weight 45 10
+run_by_sigma_given_degree_and_reg_weight 45 100
+run_by_sigma_given_degree_and_reg_weight 45 1000
+run_by_sigma_given_degree_and_reg_weight 45 10000

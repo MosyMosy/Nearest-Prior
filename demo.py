@@ -318,15 +318,20 @@ def train(*, degree, reg_weight: float = 0.0, save_dir: str, args):
                 plt.figure(figsize=(5, 3), num=0)
                 plt.plot([next(iter(x.keys())) for x in train_accuracy_per_epoch],
                          [next(iter(x.values())) for x in train_accuracy_per_epoch], label="train_acc")
-                plt.plot([next(iter(x.keys())) for x in test_accuracy_per_epoch],
-                         [next(iter(x.values())) for x in test_accuracy_per_epoch], label="test_acc")
+                _test_x = [next(iter(x.keys())) for x in test_accuracy_per_epoch]
+                _test_y = [next(iter(x.values())) for x in test_accuracy_per_epoch]
+                plt.plot(_test_x, _test_y, label="test_acc")
+                plt.text(0, 0.85, f'best acc: {max(_test_y) * 100:.3f}\nlast acc: {(_test_y[-1]) * 100:.3f}',
+                         fontsize=8,
+                         bbox=dict(facecolor='red', alpha=0.5))
                 save_name = os.path.join(save_dir,
                                          f'degree_{degree:03d}/reg_weight_{reg_weight}/sigma_{args.sigma:.3f}/acc.jpg')
                 Path(save_name).parent.mkdir(parents=True, exist_ok=True)
                 plt.legend()
                 plt.grid()
                 plt.ylim([0.2, 1.05])
-                plt.savefig(save_name, dpi=75)
+                plt.savefig(save_name, dpi=125)
+                plt.close()
 
     return os.path.join(save_dir, f'degree_{degree:03d}/reg_weight_{reg_weight}/sigma_{args.sigma:.3f}')
 

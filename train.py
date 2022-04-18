@@ -32,15 +32,12 @@ wandb.login()
 
 
 def make(config):
-    # create model
-    # if config.pretrained:
-    print("=> using pre-trained model '{}'".format(config.arch))
-    model = models.__dict__[config.arch](pretrained=True)
-    # else:
-    #     print("=> creating model '{}'".format(config.arch))
-    #     model = models.__dict__[config.arch]()
 
-    #
+    print("=> using pre-trained model '{}'".format(config.arch))
+    model = models.__dict__[config.arch]()
+    model.load_state_dict(torch.load(
+        './logs/pretrained/{}.pth'.format(config.arch), map_location=config.device))
+
     classifier = nn.Linear(in_features=model.fc.in_features,
                            out_features=model.fc.out_features)
     model.fc = nn.Identity()
@@ -50,11 +47,10 @@ def make(config):
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(config.device)
-    optimizer = torch.optim.SGD(classifier.parameters(), config.lr,
+    optimizer = torch.optim.SGD([classifier.parameters(), model.parameters()], config.lr,
                                 momentum=config.momentum,
                                 weight_decay=config.weight_decay)
-    model.eval()
-
+    
     cudnn.benchmark = True
 
     return model, classifier, criterion, optimizer
@@ -64,45 +60,48 @@ def caltech_imagenet_dataloader(config):
     source_trainval_ratio = 0.8
     class_list = np.asarray(pd.read_csv(
         config.classlist_path, skiprows=[0], header=None), dtype=int)
-    source_class_list = np.unique(class_list[:,0])
-    target_class_list = np.unique(class_list[:,1])
-        
+    source_class_list = np.unique(class_list[:, 0])
+    target_class_list = np.unique(class_list[:, 1])
+
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     train_transform = transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ])
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        normalize,
+    ])
     eval_transform = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ])
-    
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        normalize,
+    ])
+
     source_traindir = os.path.join(config.source_image_path, 'train')
     source_valdir = os.path.join(config.source_image_path, 'val')
-    
+
     source_train_loader = torch.utils.data.DataLoader(
-        custom_imagefolder.ImageFolder_classlist(source_traindir, train_transform, classlist=source_class_list),
+        datasets.ImageFolder(source_traindir, train_transform),
         batch_size=config.batch_size, shuffle=True,
-        num_workers=config.workers, pin_memory=True)    
+        num_workers=config.workers, pin_memory=True)
     source_val_loader = torch.utils.data.DataLoader(
-        custom_imagefolder.ImageFolder_classlist(source_valdir, train_transform, classlist=source_class_list),
+        datasets.ImageFolder(source_valdir, eval_transform),
         batch_size=config.batch_size, shuffle=False,
         num_workers=config.workers, pin_memory=True)
-    
+
     target_train_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(config.target_image_path, train_transform),
         batch_size=config.batch_size, shuffle=True,
-        num_workers=config.workers, pin_memory=True)    
-    target_test_loader = torch.utils.data.DataLoader(
-        custom_imagefolder.ImageFolder_classlist(config.target_image_path, train_transform, classlist=target_class_list),
-        batch_size=config.batch_size, shuffle=False,
         num_workers=config.workers, pin_memory=True)
     
+    # 84 common classes with imagenet and map target to imagenet index 
+    target_test_loader = torch.utils.data.DataLoader(
+        custom_imagefolder.ImageFolder_classlist(
+            config.target_image_path, eval_transform, classlist=target_class_list, targetmap=source_class_list),
+        batch_size=config.batch_size, shuffle=False,
+        num_workers=config.workers, pin_memory=True)
+
     return source_train_loader, source_val_loader, target_train_loader, target_test_loader
 
 
@@ -113,8 +112,7 @@ def main_pipeline(*, args):
         global best_acc1
         if config.gpu is not None:
             print("Use GPU: {} for training".format(config.gpu))
-        model, classifier, criterion, optimizer = make(
-            config)
+        model, classifier, criterion, optimizer = make(config)
 
         # Data loading code
         source_train_loader, source_val_loader, target_train_loader, target_test_loader = caltech_imagenet_dataloader(
@@ -123,10 +121,10 @@ def main_pipeline(*, args):
         if config.evaluate:
             validate(source_val_loader, model, classifier, criterion, config)
             return
-        
+
         # record target accuracy before adaption
         validate(target_test_loader, model, classifier, criterion, config)
-        
+
         # Tell wandb to watch what the model gets up to: gradients, weights, and more!
         wandb.watch(classifier, criterion, log="all", log_freq=10)
         for epoch in tqdm(range(config.start_epoch, config.epochs)):
@@ -161,7 +159,7 @@ def main_pipeline(*, args):
                 d[meter.name + '_avg'] = meter.avg
 
             wandb.log(d, step=epoch)
-        
+
         # record target accuracy after adaption
         validate(target_test_loader, model, classifier, criterion, config)
 
@@ -182,6 +180,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
+    model.train()
     classifier.train()
 
     end = time.time()
@@ -189,10 +188,10 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         target_loader_iter = iter(target_train_loader)
         # Get the data from the base dataset
         try:
-            target_image, target_label = target_loader_iter.next()
+            target_image, _ = target_loader_iter.next()
         except StopIteration:
             target_loader_iter = iter(target_train_loader)
-            target_image, target_label = target_loader_iter.next()
+            target_image, _ = target_loader_iter.next()
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -200,7 +199,6 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         source_images.to(config.device)
         source_label.to(config.device)
         target_image.to(config.device)
-        target_label.to(config.device)
 
         # compute output
         source_features_, target_features_ = torch.split(model(torch.cat([source_images, target_image], dim=0)),
@@ -250,6 +248,7 @@ def validate(val_loader, model, classifier, criterion, config):
 
     # switch to evaluate mode
     classifier.eval()
+    model.eval()
 
     with torch.no_grad():
         end = time.time()
@@ -326,6 +325,7 @@ def regularization(*, source_feature: Tensor, target_feature: Tensor, sigma: flo
 
 def entropy(p):
     return torch.sum(-p * torch.log(p), dim=1).mean()
+
 
 # Initialize
 parser = argparse.ArgumentParser(description='Nearest Prior Training Pipeline')

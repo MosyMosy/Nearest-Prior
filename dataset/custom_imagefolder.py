@@ -32,7 +32,7 @@ def is_image_file(filename: str) -> bool:
     return has_file_allowed_extension(filename, IMG_EXTENSIONS)
 
 
-def find_classes(directory: str, classlist=None) -> Tuple[List[str], Dict[str, int]]:
+def find_classes(directory: str, classlist=None, targetmap = None) -> Tuple[List[str], Dict[str, int]]:
     """Finds the class folders in a dataset.
 
     See :class:`DatasetFolder` for details.
@@ -43,8 +43,14 @@ def find_classes(directory: str, classlist=None) -> Tuple[List[str], Dict[str, i
 
     if classlist is None:
         class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
-    else:
+    elif targetmap is None:
         class_to_idx = {cls_name: i for i, cls_name in enumerate(classes) if (i in classlist)}
+        subclasses = [classes[i] for i in range(len(classes)) if (i in classlist)]
+    else:
+        if len(classlist) != len(targetmap):
+            raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
+        
+        class_to_idx = {cls_name: targetmap[classlist.tolist().index(i)] for i, cls_name in enumerate(classes) if (i in classlist)}
         subclasses = [classes[i] for i in range(len(classes)) if (i in classlist)]
     return subclasses, class_to_idx
 
@@ -54,7 +60,8 @@ def make_dataset(
     class_to_idx: Optional[Dict[str, int]] = None,
     extensions: Optional[Tuple[str, ...]] = None,
     is_valid_file: Optional[Callable[[str], bool]] = None,
-    classlist=None
+    classlist=None, 
+    targetmap = None
 ) -> List[Tuple[str, int]]:
     """Generates a list of samples of a form (path_to_sample, class).
 
@@ -66,7 +73,7 @@ def make_dataset(
     directory = os.path.expanduser(directory)
 
     if class_to_idx is None:
-        _, class_to_idx = find_classes(directory, classlist)
+        _, class_to_idx = find_classes(directory, classlist, targetmap)
     elif not class_to_idx:
         raise ValueError("'class_to_index' must have at least one entry to collect any samples.")
 
@@ -144,12 +151,13 @@ class DatasetFolder(VisionDataset):
             transform: Optional[Callable] = None,
             target_transform: Optional[Callable] = None,
             is_valid_file: Optional[Callable[[str], bool]] = None,
-            classlist = None
+            classlist = None,
+            targetmap = None
     ) -> None:
         super(DatasetFolder, self).__init__(root, transform=transform,
                                             target_transform=target_transform)
-        classes, class_to_idx = self.find_classes(self.root, classlist)
-        samples = self.make_dataset(self.root, class_to_idx, extensions, is_valid_file, classlist)
+        classes, class_to_idx = self.find_classes(self.root, classlist, targetmap)
+        samples = self.make_dataset(self.root, class_to_idx, extensions, is_valid_file, classlist, targetmap = targetmap)
 
         self.loader = loader
         self.extensions = extensions
@@ -165,7 +173,8 @@ class DatasetFolder(VisionDataset):
         class_to_idx: Dict[str, int],
         extensions: Optional[Tuple[str, ...]] = None,
         is_valid_file: Optional[Callable[[str], bool]] = None,
-        classlist = None
+        classlist = None, 
+        targetmap = None
     ) -> List[Tuple[str, int]]:
         """Generates a list of samples of a form (path_to_sample, class).
 
@@ -196,9 +205,9 @@ class DatasetFolder(VisionDataset):
             raise ValueError(
                 "The class_to_idx parameter cannot be None."
             )
-        return make_dataset(directory, class_to_idx, extensions=extensions, is_valid_file=is_valid_file, classlist=classlist)
+        return make_dataset(directory, class_to_idx, extensions=extensions, is_valid_file=is_valid_file, classlist=classlist, targetmap = targetmap)
 
-    def find_classes(self, directory: str, classlist=None) -> Tuple[List[str], Dict[str, int]]:
+    def find_classes(self, directory: str, classlist=None, targetmap = None) -> Tuple[List[str], Dict[str, int]]:
         """Find the class folders in a dataset structured as follows::
 
             directory/
@@ -225,7 +234,7 @@ class DatasetFolder(VisionDataset):
         Returns:
             (Tuple[List[str], Dict[str, int]]): List of all classes and dictionary mapping each class to an index.
         """
-        return find_classes(directory, classlist)
+        return find_classes(directory, classlist, targetmap)
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         """
@@ -313,11 +322,12 @@ class ImageFolder_classlist(DatasetFolder):
             target_transform: Optional[Callable] = None,
             loader: Callable[[str], Any] = default_loader,
             is_valid_file: Optional[Callable[[str], bool]] = None,
-            classlist = None
+            classlist = None,
+            targetmap = None
     ):
         super(ImageFolder_classlist, self).__init__(root, loader, IMG_EXTENSIONS if is_valid_file is None else None,
                                           transform=transform,
                                           target_transform=target_transform,
                                           is_valid_file=is_valid_file,
-                                          classlist=classlist)
+                                          classlist=classlist,targetmap = None)
         self.imgs = self.samples

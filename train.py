@@ -126,7 +126,7 @@ def main_pipeline(*, args):
         validate(target_test_loader, model, classifier, criterion, config)
 
         # Tell wandb to watch what the model gets up to: gradients, weights, and more!
-        wandb.watch(classifier, criterion, log="all", log_freq=10)
+        wandb.watch(model, criterion, log="none", log_freq=10)
         for epoch in tqdm(range(config.start_epoch, config.epochs)):
             adjust_learning_rate(optimizer, epoch, config)
 
@@ -143,11 +143,9 @@ def main_pipeline(*, args):
             best_acc1 = max(acc1, best_acc1)
 
             save_checkpoint({
-                'epoch': epoch + 1,
                 'arch': config.arch,
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer': optimizer.state_dict(),
+                'model_state_dict': model.state_dict(),
+                'classifier_state_dict': classifier.state_dict()
             }, is_best, config.dir)
 
             d = {}
@@ -331,20 +329,20 @@ def entropy(p):
 parser = argparse.ArgumentParser(description='Nearest Prior Training Pipeline')
 parser.add_argument('--title', metavar='title',
                     help='title of this run')
-parser.add_argument('--source_image_path', metavar='source_image_path', default='D:\\downloaded_DS\\miniImagenet',
+parser.add_argument('--source_image_path', metavar='source_image_path', default='./dataset/ILSVRC/Data/CLS-LOC',
                     help='path to cource images folder')
-parser.add_argument('--target_image_path', metavar='target_image_path',
+parser.add_argument('--target_image_path', metavar='target_image_path', default='./dataset/256_objectcategories/256_ObjectCategories/',
                     help='path to target images folder')
 parser.add_argument('--classlist_path', metavar='classlist_path', default='./dataset/imagenet_to_caltech.csv',
                     help='path to class list')
-parser.add_argument('--checkpoint_dir', type=str, default='./logs/ImageNet/',
+parser.add_argument('--checkpoint_dir', type=str, default='./logs/ImageNet_caltech256/',
                     help='directory to save the checkpoints')
 parser.add_argument('--arch', metavar='ARCH', default='resnet50',
                     choices=model_names,
                     help='model architecture: ' +
                     ' | '.join(model_names) +
                     ' (default: resnet50)')
-parser.add_argument('--epochs', default=90, type=int, metavar='N',
+parser.add_argument('--epochs', default=10, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--batch_size', default=256, type=int,
                     metavar='N',

@@ -47,7 +47,8 @@ def make(config):
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(config.device)
-    optimizer = torch.optim.SGD([classifier.parameters(), model.parameters()], config.lr,
+
+    optimizer = torch.optim.SGD([{'params': classifier.parameters()}, {'params': model.parameters()}], config.lr,
                                 momentum=config.momentum,
                                 weight_decay=config.weight_decay)
     
@@ -360,7 +361,7 @@ parser.add_argument('--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
-parser.add_argument('--gpu', default=None, type=int,
+parser.add_argument('--gpu', default=None, type=int, default=0,
                     help='GPU id to use.')
 
 parser.add_argument('--workers', default=8, type=int,

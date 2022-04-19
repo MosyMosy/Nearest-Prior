@@ -361,7 +361,7 @@ parser.add_argument('--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
-parser.add_argument('--gpu', default=None, type=int, default=0,
+parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 
 parser.add_argument('--workers', default=8, type=int,

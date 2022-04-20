@@ -207,8 +207,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         output = classifier(source_features_)
         cl_loss = criterion(output, source_label.to(config.device))
 
-        reg_loss, meta = regularization(
-            source_features_, target_features_, sigma=config.sigma)
+        reg_loss, meta = regularization(source_feature=source_features_, target_feature=target_features_, sigma=config.sigma, device=config.device)
         intra_distance.update(meta["minimum_intra_nearest_distance"])
         inter_distance.update(meta["minimum_inter_nearest_distance"])
 

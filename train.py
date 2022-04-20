@@ -205,7 +205,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         source_features_.to(config.device)
         target_features_.to(config.device)
         output = classifier(source_features_)
-        cl_loss = criterion(output, source_label)
+        cl_loss = criterion(output, source_label.to(config.device))
 
         reg_loss, meta = regularization(
             source_features_, target_features_, sigma=config.sigma)

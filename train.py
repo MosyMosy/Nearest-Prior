@@ -370,7 +370,7 @@ parser.add_argument('--sigma', default=0.8, type=float,
                     help='sigma.')
 parser.add_argument('--reg_weight', default=0.05, type=float,
                     help='Regularization loos weight.')
-
+parser.add_argument('--print_freq', default=100, type=int)
 args = parser.parse_args()
 
 if args.seed is not None:

@@ -207,7 +207,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         output = classifier(source_features_)
         cl_loss = criterion(output, source_label.to(config.device))
 
-        reg_loss, meta = regularization(source_feature=source_features_, target_feature=target_features_, sigma=config.sigma, device=config.device)
+        reg_loss, meta = regularization(source_feature=source_features_, target_feature=target_features_, sigma=config.sigma, config=config)
         intra_distance.update(meta["minimum_intra_nearest_distance"])
         inter_distance.update(meta["minimum_inter_nearest_distance"])
 
@@ -281,11 +281,11 @@ def validate(val_loader, model, classifier, criterion, config):
     return top1.avg, progress
 
 
-def regularization(*, source_feature: Tensor, target_feature: Tensor, sigma: float = 0.8, device) -> t.Tuple[Tensor, t.Dict]:
+def regularization(*, source_feature: Tensor, target_feature: Tensor, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
     def _regularize(source_feature, target_feature):
         source_size = source_feature.size()[0]
         target_size = target_feature.size()[0]
-        all_features = torch.cat([source_feature, target_feature], dim=0)
+        all_features = torch.cat([source_feature, target_feature], dim=0).to(config.device)
         squared_features = torch.cdist(all_features, all_features, p=2) + (
             torch.eye(all_features.size()[0]).to(device) * 1e5)
         distance_map = torch.exp(-squared_features / (2 * sigma ** 2))

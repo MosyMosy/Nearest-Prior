@@ -166,9 +166,9 @@ def main_pipeline(*, args):
 def train(sourcetrain_loader, target_train_loader, model, classifier, criterion, optimizer, epoch, config):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
-    cls_losses = AverageMeter('Loss', ':.4e')
-    reg_losses = AverageMeter('Loss', ':.4e')
-    losses = AverageMeter('Loss', ':.4e')
+    cls_losses = AverageMeter('cls_losses', ':.4e')
+    reg_losses = AverageMeter('reg_losses', ':.4e')
+    losses = AverageMeter('losses', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
     intra_distance = AverageMeter('intra_distance', ':6.2f')

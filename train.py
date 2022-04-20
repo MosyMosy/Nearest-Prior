@@ -11,6 +11,7 @@ from tqdm import tqdm
 import typing as t
 import numpy as np
 import pandas as pd
+import copy
 
 import torch
 from torch import device, nn, Tensor
@@ -38,8 +39,7 @@ def make(config):
     model.load_state_dict(torch.load(
         './logs/pretrained/{}.pth'.format(config.arch), map_location=config.device))
 
-    classifier = nn.Linear(in_features=model.fc.in_features,
-                           out_features=model.fc.out_features)
+    classifier = copy.deepcopy(model.fc)
     model.fc = nn.Identity()
 
     model = model.to(config.device)
@@ -128,7 +128,7 @@ def main_pipeline(*, args):
 
         # Tell wandb to watch what the model gets up to: gradients, weights, and more!
         wandb.watch(model, criterion, log="none", log_freq=10)
-        for epoch in tqdm(range(config.start_epoch, config.epochs)):
+        for epoch in tqdm(range(config.epochs)):
             adjust_learning_rate(optimizer, epoch, config)
 
             # train for one epoch

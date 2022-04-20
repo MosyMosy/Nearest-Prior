@@ -196,7 +196,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         data_time.update(time.time() - end)
 
         source_images.to(config.device)
-        source_label.to(config.device)
+        source_label = source_label.to(config.device)
         target_image.to(config.device)
 
         # compute output

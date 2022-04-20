@@ -287,7 +287,7 @@ def regularization(*, source_feature: Tensor, target_feature: Tensor, sigma: flo
         target_size = target_feature.size()[0]
         all_features = torch.cat([source_feature, target_feature], dim=0).to(config.device)
         squared_features = torch.cdist(all_features, all_features, p=2) + (
-            torch.eye(all_features.size()[0]).to(device) * 1e5)
+            torch.eye(all_features.size()[0]).to(config.device) * 1e5)
         distance_map = torch.exp(-squared_features / (2 * sigma ** 2))
         distance_map = distance_map * (1 - torch.eye(all_features.size()[0]))
         intra_domain_distance_map = distance_map[:source_size, :source_size]

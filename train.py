@@ -175,7 +175,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
     inter_distance = AverageMeter('inter_distance', ':6.2f')
     progress = ProgressMeter(
         len(sourcetrain_loader),
-        [batch_time, data_time, cls_losses, top1, top5],
+        [batch_time, data_time, cls_losses, reg_losses, losses, intra_distance, inter_distance, top1, top5],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -205,7 +205,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         source_features_.to(config.device)
         target_features_.to(config.device)
         output = classifier(source_features_)
-        cl_loss = criterion(output, source_label.to(config.device))
+        cl_loss = criterion(output, source_label)
 
         reg_loss, meta = regularization(source_feature=source_features_, target_feature=target_features_, sigma=config.sigma, config=config)
         intra_distance.update(meta["minimum_intra_nearest_distance"])
@@ -214,8 +214,6 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         loss = (cl_loss + config.reg_weight * reg_loss)
 
         # measure accuracy and record loss 
-        print(output.get_device())
-        print(source_label.get_device())
         acc1, acc5 = accuracy(output, source_label, topk=(1, 5))
         cls_losses.update(cl_loss.item(), source_images.size(0))
         reg_losses.update(reg_loss.item(), source_images.size(0))

@@ -200,10 +200,10 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         target_image.to(config.device)
 
         # compute output
-        source_features_, target_features_ = torch.split(model(torch.cat([source_images, target_image], dim=0).to(device)),
+        source_features_, target_features_ = torch.split(model(torch.cat([source_images, target_image], dim=0).to(config.device)),
                                                          [source_images.size()[0], target_image.size()[0]], dim=0)
-        source_features_.to(device)
-        target_features_.to(device)
+        source_features_.to(config.device)
+        target_features_.to(config.device)
         output = classifier(source_features_)
         cl_loss = criterion(output, source_label)
 

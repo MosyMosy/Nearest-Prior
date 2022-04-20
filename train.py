@@ -213,7 +213,9 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
 
         loss = (cl_loss + config.reg_weight * reg_loss)
 
-        # measure accuracy and record loss
+        # measure accuracy and record loss 
+        print(output.get_device())
+        print(source_label.get_device())
         acc1, acc5 = accuracy(output, source_label, topk=(1, 5))
         cls_losses.update(cl_loss.item(), source_images.size(0))
         reg_losses.update(reg_loss.item(), source_images.size(0))

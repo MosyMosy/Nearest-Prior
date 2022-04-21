@@ -280,25 +280,25 @@ def validate(val_loader, model, classifier, criterion, config):
 
 
 def regularization(*, all_features: Tensor, source_size:int, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
-    def _regularize(all_features, source_size):
+    def _regularize(all_features, source_scope, target_scope):
         all_features
         squared_features = torch.cdist(all_features, all_features, p=2) + (
             torch.eye(all_features.size()[0]).to(config.device) * 1e5)
         distance_map = torch.exp(-squared_features / (2 * sigma ** 2))
         distance_map = distance_map * (1 - torch.eye(all_features.size()[0]).to(config.device))
-        intra_domain_distance_map = distance_map[:source_size, :source_size]
+        intra_domain_distance_map = distance_map[source_scope[0]:source_scope[1], source_scope[0]:source_scope[1]]
         intra_nominator = torch.max(intra_domain_distance_map, dim=1)[0]
         # intra_denominator = torch.sum(intra_domain_distance_map, dim=1)
         # intra_domain_distance_map = intra_nominator / intra_denominator
-        source_source_nearest_neighbor_distance_map = squared_features[:source_size, :source_size]
+        source_source_nearest_neighbor_distance_map = squared_features[source_scope[0]:source_scope[1], source_scope[0]:source_scope[1]]
         source_source_nearest_neighbor_distances = source_source_nearest_neighbor_distance_map.min(dim=1)[
             0]
 
-        inter_domain_distance_map = distance_map[:source_size, source_size:]
+        inter_domain_distance_map = distance_map[source_scope[0]:source_scope[1], target_scope[0]: target_scope[1]]
         inter_nominator = torch.max(inter_domain_distance_map, dim=1)[0]
         # inter_denominator = torch.sum(inter_domain_distance_map, dim=1)
         # inter_domain_distance_map = inter_nominator / inter_denominator
-        source_target_nearest_neighbor_distance_map = squared_features[:source_size, source_size:]
+        source_target_nearest_neighbor_distance_map = squared_features[source_scope[0]:source_scope[1], target_scope[0]: target_scope[1]]
         source_target_nearest_neighbor_distances = source_target_nearest_neighbor_distance_map.min(dim=1)[
             0]
 
@@ -309,8 +309,8 @@ def regularization(*, all_features: Tensor, source_size:int, sigma: float = 0.8,
 
         return torch.stack([intra_nominator, inter_nominator], dim=1).softmax(1), meta_info
 
-    p1, meta1 = _regularize(all_features, source_size)
-    p2, meta2 = _regularize(torch.flip(all_features), all_features.size()[0] - source_size)
+    p1, meta1 = _regularize(all_features, source_scope=[0,source_size], target_scope=[source_size, all_features.size()[0]])
+    p2, meta2 = _regularize(all_features, source_scope=[source_size, all_features.size()[0]], target_scope=[0,source_size])
 
     meta = {}
     for key in meta1.keys():

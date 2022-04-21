@@ -279,7 +279,6 @@ def validate(val_loader, model, classifier, criterion, config):
 
 def regularization(*, all_features: Tensor, source_size:int, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
     def _regularize(all_features, source_scope, target_scope):
-        all_features
         squared_features = torch.cdist(all_features, all_features, p=2) + (
             torch.eye(all_features.size()[0]).to(config.device) * 1e5)
         distance_map = torch.exp(-squared_features / (2 * sigma ** 2))

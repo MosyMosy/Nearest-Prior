@@ -1,3 +1,4 @@
+from xml.sax.handler import all_features
 import wandb
 from sqlalchemy import false, true
 from util import *
@@ -39,7 +40,8 @@ def make(config):
     model.load_state_dict(torch.load(
         './logs/pretrained/{}.pth'.format(config.arch), map_location=config.device))
 
-    classifier = copy.deepcopy(model.fc)
+    classifier = nn.Linear(in_features=model.fc.in_features,
+                           out_features=model.fc.out_features) #copy.deepcopy(model.fc)
     model.fc = nn.Identity()
 
     model = model.to(config.device)
@@ -195,31 +197,27 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         # measure data loading time
         data_time.update(time.time() - end)
 
-        source_images.to(config.device)
-        source_label = source_label.to(config.device)
-        target_image.to(config.device)
-
+        source_label.to(config.device)
+        all_images = torch.cat([source_images, target_image], dim=0).to(config.device)
+        source_size = source_images.size()[0]
         # compute output
-        source_features_, target_features_ = torch.split(model(torch.cat([source_images, target_image], dim=0).to(config.device)),
-                                                         [source_images.size()[0], target_image.size()[0]], dim=0)
-        source_features_.to(config.device)
-        target_features_.to(config.device)
-        output = classifier(source_features_)
-        cl_loss = criterion(output, source_label)
+        all_features = model(all_images)
+        source_output = classifier(all_features[:source_size])
+        cl_loss = criterion(source_output, source_label)
 
-        reg_loss, meta = regularization(source_feature=source_features_, target_feature=target_features_, sigma=config.sigma, config=config)
+        reg_loss, meta = regularization(all_features=all_features, source_size=source_size, sigma=config.sigma, config=config)
         intra_distance.update(meta["minimum_intra_nearest_distance"])
         inter_distance.update(meta["minimum_inter_nearest_distance"])
 
         loss = (cl_loss + config.reg_weight * reg_loss)
 
         # measure accuracy and record loss 
-        acc1, acc5 = accuracy(output, source_label, topk=(1, 5))
-        cls_losses.update(cl_loss.item(), source_images.size(0))
-        reg_losses.update(reg_loss.item(), source_images.size(0))
-        losses.update(loss.item(), source_images.size(0))
-        top1.update(acc1[0], source_images.size(0))
-        top5.update(acc5[0], source_images.size(0))
+        acc1, acc5 = accuracy(source_output, source_label, topk=(1, 5))
+        cls_losses.update(cl_loss.item(), source_size)
+        reg_losses.update(reg_loss.item(), source_size)
+        losses.update(loss.item(), source_size)
+        top1.update(acc1[0], source_size)
+        top5.update(acc5[0], source_size)
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -281,11 +279,9 @@ def validate(val_loader, model, classifier, criterion, config):
     return top1.avg, progress
 
 
-def regularization(*, source_feature: Tensor, target_feature: Tensor, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
-    def _regularize(source_feature, target_feature):
-        source_size = source_feature.size()[0]
-        target_size = target_feature.size()[0]
-        all_features = torch.cat([source_feature, target_feature], dim=0).to(config.device)
+def regularization(*, all_features: Tensor, source_size:int, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
+    def _regularize(all_features, source_size):
+        all_features
         squared_features = torch.cdist(all_features, all_features, p=2) + (
             torch.eye(all_features.size()[0]).to(config.device) * 1e5)
         distance_map = torch.exp(-squared_features / (2 * sigma ** 2))
@@ -313,8 +309,8 @@ def regularization(*, source_feature: Tensor, target_feature: Tensor, sigma: flo
 
         return torch.stack([intra_nominator, inter_nominator], dim=1).softmax(1), meta_info
 
-    p1, meta1 = _regularize(source_feature, target_feature)
-    p2, meta2 = _regularize(target_feature, source_feature)
+    p1, meta1 = _regularize(all_features, source_size)
+    p2, meta2 = _regularize(torch.flip(all_features), all_features.size()[0] - source_size)
 
     meta = {}
     for key in meta1.keys():

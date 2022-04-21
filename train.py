@@ -197,7 +197,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         # measure data loading time
         data_time.update(time.time() - end)
 
-        source_label.to(config.device)
+        source_label = source_label.to(config.device)
         all_images = torch.cat([source_images, target_image], dim=0).to(config.device)
         source_size = source_images.size()[0]
         # compute output

@@ -379,6 +379,7 @@ if torch.cuda.is_available():
     dev = "cuda:{0}".format(args.gpu)
 else:
     dev = "cpu"
+dev = "cpu"
 args.device = torch.device(dev)
 
 main_pipeline(args=args)

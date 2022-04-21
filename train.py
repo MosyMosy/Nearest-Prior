@@ -251,10 +251,8 @@ def validate(val_loader, model, classifier, criterion, config):
     with torch.no_grad():
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
-            if config.gpu is not None:
-                images = images.cuda(config.gpu, non_blocking=True)
-            if torch.cuda.is_available():
-                target = target.cuda(config.gpu, non_blocking=True)
+            images = images.to(config.device)
+            target = target.to(config.device)
 
             # compute output
             output = model(images)

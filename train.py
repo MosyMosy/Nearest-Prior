@@ -205,7 +205,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         source_output = classifier(all_features[:source_size])
         cl_loss = criterion(source_output, source_label)
 
-        reg_loss, meta = regularization(all_features=all_features, source_size=source_size, sigma=config.sigma, config=config)
+        reg_loss, meta = regularization_new(all_features=all_features, source_size=source_size, sigma=config.sigma, config=config)
         intra_distance.update(meta["minimum_intra_nearest_distance"])
         inter_distance.update(meta["minimum_inter_nearest_distance"])
 
@@ -306,6 +306,32 @@ def regularization(*, all_features: Tensor, source_size:int, sigma: float = 0.8,
 
         return torch.stack([intra_nominator, inter_nominator], dim=1).softmax(1), meta_info
 
+    p1, meta1 = _regularize(all_features, source_scope=[0,source_size], target_scope=[source_size, all_features.size()[0]])
+    p2, meta2 = _regularize(all_features, source_scope=[source_size, all_features.size()[0]], target_scope=[0,source_size])
+
+    meta = {}
+    for key in meta1.keys():
+        meta[key] = (meta1[key] + meta2[key]) / 2
+
+    return -entropy(p1) - entropy(p2), meta
+
+def regularization_new(*, all_features: Tensor, source_size:int, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
+    def _regularize(all_features, source_scope, target_scope):
+        intra_squared_features = torch.cdist(all_features[source_scope[0]: source_scope[1]], all_features[source_scope[0], source_scope[1]], p=2)
+        intra_squared_features = torch.flatten(intra_squared_features)
+        
+        inter_squared_features = torch.cdist(all_features[source_scope[0]: source_scope[1]], all_features[target_scope[0], target_scope[1]], p=2)
+        inter_squared_features = torch.flatten(inter_squared_features)
+        
+        # intra_distance = intra_squared_features.softmax(0)
+        # inter_distance = inter_squared_features.softmax(0)
+        
+        meta_info = {
+            "minimum_intra_nearest_distance": intra_squared_features.mean().item(),
+            "minimum_inter_nearest_distance": inter_squared_features.mean().item()
+        }
+        return torch.stack([inter_squared_features, inter_squared_features], dim=0).softmax(0), meta_info
+        
     p1, meta1 = _regularize(all_features, source_scope=[0,source_size], target_scope=[source_size, all_features.size()[0]])
     p2, meta2 = _regularize(all_features, source_scope=[source_size, all_features.size()[0]], target_scope=[0,source_size])
 

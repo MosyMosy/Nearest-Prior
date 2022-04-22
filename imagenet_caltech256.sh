@@ -51,7 +51,7 @@ cd Nearest-Prior
 
 title=ImageNet_caltech256_first
 
-python train.py --title $title --epochs 20 --batch_size 128 --learning_rate 0.01 --reg_weight 1
+python train.py --title $title --epochs 20 --batch_size 128 --learning_rate 0.01 --reg_weight 1 --sigma 10 --print_freq 10
 
 echo "-----------------------------------<End of run the program>---------------------------------"
 date +"%T"

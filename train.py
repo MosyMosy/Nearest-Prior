@@ -205,7 +205,7 @@ def train(sourcetrain_loader, target_train_loader, model, classifier, criterion,
         source_output = classifier(all_features[:source_size])
         cl_loss = criterion(source_output, source_label)
 
-        reg_loss, meta = regularization_new(all_features=all_features, source_size=source_size, sigma=config.sigma, config=config)
+        reg_loss, meta = regularization(all_features=all_features, source_size=source_size, sigma=config.sigma, config=config)
         intra_distance.update(meta["minimum_intra_nearest_distance"])
         inter_distance.update(meta["minimum_inter_nearest_distance"])
 

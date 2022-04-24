@@ -278,68 +278,28 @@ def validate(val_loader, model, classifier, criterion, config):
 
 
 def regularization(*, all_features: Tensor, source_size:int, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
-    def _regularize(all_features, source_scope, target_scope):
-        squared_features = torch.cdist(all_features, all_features, p=2) + (
-            torch.eye(all_features.size()[0]).to(config.device) * 1e5)
-        distance_map = torch.exp(-squared_features / (2 * sigma ** 2))
-        distance_map = distance_map * (1 - torch.eye(all_features.size()[0]).to(config.device))
-        intra_domain_distance_map = distance_map[source_scope[0]:source_scope[1], source_scope[0]:source_scope[1]]
-        intra_nominator = torch.max(intra_domain_distance_map, dim=1)[0]
-        # intra_denominator = torch.sum(intra_domain_distance_map, dim=1)
-        # intra_domain_distance_map = intra_nominator / intra_denominator
-        source_source_nearest_neighbor_distance_map = squared_features[source_scope[0]:source_scope[1], source_scope[0]:source_scope[1]]
-        source_source_nearest_neighbor_distances = source_source_nearest_neighbor_distance_map.min(dim=1)[
-            0]
+    squared_features = torch.cdist(all_features, all_features, p=2)
+    similarity_map = torch.exp(-squared_features / (2 * (squared_features.var(1) ** 2) * sigma))
+    similarity_map = similarity_map * (1 - torch.eye(all_features.size()[0])) # assign zero to self similarity
 
-        inter_domain_distance_map = distance_map[source_scope[0]:source_scope[1], target_scope[0]: target_scope[1]]
-        inter_nominator = torch.max(inter_domain_distance_map, dim=1)[0]
-        # inter_denominator = torch.sum(inter_domain_distance_map, dim=1)
-        # inter_domain_distance_map = inter_nominator / inter_denominator
-        source_target_nearest_neighbor_distance_map = squared_features[source_scope[0]:source_scope[1], target_scope[0]: target_scope[1]]
-        source_target_nearest_neighbor_distances = source_target_nearest_neighbor_distance_map.min(dim=1)[
-            0]
+    source_max_similarity = torch.max(similarity_map[:,:source_size], dim=1)[0]
+    target_max_similarity = torch.max(similarity_map[:,source_size:], dim=1)[0]
+    
+    source_similarity_probability = source_max_similarity / (source_max_similarity + target_max_similarity)
+    target_similarity_probability = target_max_similarity / (source_max_similarity + target_max_similarity)
+    
+    source_nearest_neighbor_distance_map = squared_features[:source_size, :source_size]
+    source_nearest_neighbor_distances = source_nearest_neighbor_distance_map.max(dim=1)[0]
+    
+    target_nearest_neighbor_distance_map = squared_features[:source_size, source_size:]
+    target_nearest_neighbor_distances = target_nearest_neighbor_distance_map.max(dim=1)[0]
 
-        meta_info = {
-            "minimum_intra_nearest_distance": source_source_nearest_neighbor_distances.mean().item(),
-            "minimum_inter_nearest_distance": source_target_nearest_neighbor_distances.mean().item()
-        }
+    meta_info = {
+        "minimum_intra_nearest_distance": source_nearest_neighbor_distances.mean().item(),
+        "minimum_inter_nearest_distance": target_nearest_neighbor_distances.mean().item()
+    }
 
-        return torch.stack([intra_nominator, inter_nominator], dim=1).softmax(1), meta_info
-
-    p1, meta1 = _regularize(all_features, source_scope=[0,source_size], target_scope=[source_size, all_features.size()[0]])
-    p2, meta2 = _regularize(all_features, source_scope=[source_size, all_features.size()[0]], target_scope=[0,source_size])
-
-    meta = {}
-    for key in meta1.keys():
-        meta[key] = (meta1[key] + meta2[key]) / 2
-
-    return -entropy(p1) - entropy(p2), meta
-
-def regularization_new(*, all_features: Tensor, source_size:int, sigma: float = 0.8, config) -> t.Tuple[Tensor, t.Dict]:
-    def _regularize(all_features, source_scope, target_scope):
-        intra_squared_features = torch.cdist(all_features[source_scope[0]: source_scope[1]], all_features[source_scope[0], source_scope[1]], p=2)
-        intra_squared_features = torch.flatten(intra_squared_features)
-        
-        inter_squared_features = torch.cdist(all_features[source_scope[0]: source_scope[1]], all_features[target_scope[0], target_scope[1]], p=2)
-        inter_squared_features = torch.flatten(inter_squared_features)
-        
-        # intra_distance = intra_squared_features.softmax(0)
-        # inter_distance = inter_squared_features.softmax(0)
-        
-        meta_info = {
-            "minimum_intra_nearest_distance": intra_squared_features.mean().item(),
-            "minimum_inter_nearest_distance": inter_squared_features.mean().item()
-        }
-        return torch.stack([inter_squared_features, inter_squared_features], dim=0).softmax(0), meta_info
-        
-    p1, meta1 = _regularize(all_features, source_scope=[0,source_size], target_scope=[source_size, all_features.size()[0]])
-    p2, meta2 = _regularize(all_features, source_scope=[source_size, all_features.size()[0]], target_scope=[0,source_size])
-
-    meta = {}
-    for key in meta1.keys():
-        meta[key] = (meta1[key] + meta2[key]) / 2
-
-    return -entropy(p1) - entropy(p2), meta
+    return -entropy(source_similarity_probability, 0) - entropy(target_similarity_probability, 0), meta_info
 
 
 def entropy(p):

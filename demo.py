@@ -12,8 +12,8 @@ from sklearn.datasets import make_moons
 from torch import nn, Tensor
 
 
-def entropy(p):
-    return torch.sum(-p * torch.log(p), dim=1).mean()
+def entropy(p , dim=1):
+    return torch.sum(-p * torch.log(p), dim=dim).mean()
 
 
 # two moons example.
@@ -236,6 +236,64 @@ def regularization(source_feature: Tensor, target_feature: Tensor, sigma: float 
 
     return -entropy(p1) - entropy(p2), meta
 
+def regularization_new2(source_feature: Tensor, target_feature: Tensor, sigma: float = 0.8) -> t.Tuple[Tensor, t.Dict]:
+    source_size = source_feature.size()[0]
+    target_size = target_feature.size()[0]
+
+    all_features = torch.cat([source_feature, target_feature], dim=0)
+    
+    squared_features = torch.cdist(all_features, all_features, p=2)
+    similarity_map = torch.exp(-squared_features / (2 * (squared_features.var(1) ** 2) * sigma))
+    similarity_map = similarity_map * (1 - torch.eye(all_features.size()[0]))
+    # similarity_map = (similarity_map - 1 + torch.eye(all_features.size()[0]) * similarity_map.mean())#.softmax(1)
+
+    source_max_similarity = torch.max(similarity_map[:,:source_size], dim=1)[0]
+    target_max_similarity = torch.max(similarity_map[:,source_size:], dim=1)[0]
+    # similarity_map = similarity_map.masked_select(~torch.eye(all_features.size()[0], dtype=bool)).view(all_features.size()[0], all_features.size()[0] - 1)
+    source_similarity_probability = source_max_similarity / (source_max_similarity + target_max_similarity)
+    target_similarity_probability = target_max_similarity / (source_max_similarity + target_max_similarity)
+    
+    source_nearest_neighbor_distance_map = squared_features[:source_size, :source_size]
+    source_nearest_neighbor_distances = source_nearest_neighbor_distance_map.max(dim=1)[0]
+    
+    target_nearest_neighbor_distance_map = squared_features[:source_size, source_size:]
+    target_nearest_neighbor_distances = target_nearest_neighbor_distance_map.max(dim=1)[0]
+
+    meta_info = {
+        "minimum_intra_nearest_distance": source_nearest_neighbor_distances.mean().item(),
+        "minimum_inter_nearest_distance": target_nearest_neighbor_distances.mean().item()
+    }
+
+    return -entropy(source_similarity_probability, 0) - entropy(target_similarity_probability, 0), meta_info
+
+
+def regularization_new(source_feature: Tensor, target_feature: Tensor, sigma: float = 0.8) -> t.Tuple[Tensor, t.Dict]:
+    def _regularize(source_feature, target_feature):
+        intra_squared_features = torch.cdist(source_feature, source_feature, p=2)
+        intra_squared_features = torch.flatten(intra_squared_features)
+        
+        inter_squared_features = torch.cdist(source_feature, target_feature, p=2)
+        inter_squared_features = torch.flatten(inter_squared_features)
+        
+        # intra_distance = intra_squared_features.softmax(0)
+        # inter_distance = inter_squared_features.softmax(0)
+        
+        meta_info = {
+            "minimum_intra_nearest_distance": intra_squared_features.mean().item(),
+            "minimum_inter_nearest_distance": inter_squared_features.mean().item()
+        }
+        return torch.stack([inter_squared_features, inter_squared_features], dim=0).softmax(0), meta_info
+        
+    p1, meta1 = _regularize(source_feature, target_feature)
+    p2, meta2 = _regularize(source_feature, target_feature)
+
+    meta = {}
+    for key in meta1.keys():
+        meta[key] = (meta1[key] + meta2[key]) / 2
+
+    return -entropy(p1) - entropy(p2), meta
+
+
 
 def train(*, degree, reg_weight: float = 0.0, save_dir: str, args):
     model, optimizer, criterion, n_epochs, batch_size = initialize_training()
@@ -276,7 +334,8 @@ def train(*, degree, reg_weight: float = 0.0, save_dir: str, args):
                     features_, [X_source_.size()[0], X_target_.size()[0]],
                     dim=0
                 )
-                regularization_loss, meta = regularization(source_features_, target_features_, sigma=args.sigma)
+                # regularization_loss, meta = regularization(source_features_, target_features_, sigma=args.sigma)
+                regularization_loss, meta = regularization_new2(source_features_, target_features_, sigma=args.sigma)
                 optimizer.zero_grad()
                 (loss + reg_weight * regularization_loss).backward()
                 optimizer.step()
@@ -355,7 +414,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--degree', type=int, default=0, help='degree of rotation')
-    parser.add_argument('--reg-weight', type=float, default=0.0, help='regularization weight')
+    parser.add_argument('--reg-weight', type=float, default=1, help='regularization weight')
     parser.add_argument('--save-dir', type=str, default="./runs", help='save directory')
     parser.add_argument('--sigma', type=float, default=0.8, help='sigma')
 

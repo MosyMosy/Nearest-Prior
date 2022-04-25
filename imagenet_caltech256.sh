@@ -12,7 +12,7 @@
 #SBATCH --ntasks-per-node=32
 #SBATCH --mem=127000M
 #SBATCH --time=1-00:00
-#SBATCH --account=def-chdesa
+#SBATCH --account=rrg-ebrahimi
 
 nvidia-smi
 

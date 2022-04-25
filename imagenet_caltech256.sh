@@ -49,9 +49,9 @@ date +"%T"
 cd $SLURM_TMPDIR
 cd Nearest-Prior
 
-title=ImageNet_caltech256_first
+title=ImageNet_caltech256_with_new_regularization
 
-python train.py --title $title --epochs 20 --batch_size 128 --learning_rate 0.01 --reg_weight 1 --sigma 1000 --print_freq 10
+python train.py --title $title --epochs 20 --batch_size 128 --learning_rate 0.01 --reg_weight 10 --sigma 1 --print_freq 100
 
 echo "-----------------------------------<End of run the program>---------------------------------"
 date +"%T"
